@@ -1,20 +1,15 @@
 <?php
 /**
- * ABC Plugin (http://staffweb.cms.gre.ac.uk/~c.walshaw/abc/)
- * for DokuWiki (http://www.splitbrain.org/dokuwiki/wiki:dokuwiki)
- * 
- * todo ... maybe ...:
- *   * allow more parameters (eg. width)?
- *   * log abc2mps + abc2midi errors?
- *   * remove previewed files
- *   * show only links to transposed PNGs instead of displaying them?
+ * ABC Plugin (http://dokuwiki.org/plugin:abc)
+ * for ABC notation (http://abcnotation.org.uk/)
+ * in DokuWiki (http://dokuwiki.org/)
  * 
  * @license     GPL 2 (http://www.gnu.org/licenses/gpl.html)
- * @author      A.C. Henke <a.c.henke@arcor.de>
- * @version     2007-06-03
+ * @author      Anika Henke <anika@selfthinker.org>
+ * @version     2008-08-17
  */
 
-if(!defined('DOKU_INC')) define('DOKU_INC',realpath(dirname(__FILE__).'/../../').'/');
+if(!defined('DOKU_INC')) die();
 if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
 require_once(DOKU_PLUGIN.'syntax.php');
 
@@ -24,12 +19,12 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 
     function getInfo(){
         return array(
-            'author' => 'A.C. Henke',
-            'email'  => 'a.c.henke@arcor.de',
-            'date'   => '2007-06-03',
+            'author' => 'Anika Henke',
+            'email'  => 'anika@selfthinker.org',
+            'date'   => '2008-08-17',
             'name'   => 'ABC Plugin',
             'desc'   => 'Displays sheet music (input ABC, output png with midi)',
-            'url'    => 'http://wiki.splitbrain.org/plugin:abc',
+            'url'    => 'http://dokuwiki.org/plugin:abc',
         );
     }
 
@@ -66,20 +61,22 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
     function render($mode, &$renderer, $data) {
         global $conf;
         global $INFO;
+        global $ACT;
         if($mode == 'xhtml' && strlen($data[0]) > 1){
             $src = $data[0];
+            $origSrc = $src;
             $trans = "0 ".$data[1]; // "0" includes the original key
 
             $error = $this->_checkExecs();
-            if($this->getConf('abcok') && !$INFO['rev'] && !$error){
+            if($this->getConf('abcok') && (!$INFO['rev'] || ($INFO['rev'] && ($ACT=='preview'))) && !$error){
+            //do not create/show files if an old revision is viewed, but always if the page is previewed and never when there is an error
 
-                $origSrc = $src;
                 $entitiesFile = dirname(__FILE__).'/conf/entities.conf';
                 if (@file_exists($entitiesFile)) {
                     $entities = confToHash($entitiesFile);
                     $src = strtr($src,$entities);
                 }
-                $fileBase = $this->_getFileBase($conf['savedir'], $origSrc);
+                $fileBase = $this->_getFileBase($conf['mediadir'], $origSrc);
                 $srcFile = $fileBase.'.abc';
                 $srcChanged = (!file_exists($srcFile) || (file_exists($srcFile) && $src!=io_readFile($srcFile)));
                 if ($srcChanged) io_saveFile($srcFile, $src);
@@ -115,11 +112,18 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                     }
                     if ($this->getConf('displayType')==2) {
                         $this->_createPsFile($abcFile, $curFileBase);
-                        if ($this->getConf('ps2pdf') && is_executable($this->getConf('ps2pdf'))) {
+                        if ($this->getConf('ps2pdf')) {
                             $this->_createPdfFile($abcFile, $curFileBase);
                         }
                     }
+                    $errorLog = ob_get_contents();
                     if(!$this->_debug) ob_end_clean();
+                }
+                if ($this->getConf('displayErrorlog') && $errorLog) {
+                    $errorLog = str_replace($this->_getAbc2psVersion(), "abc2ps", $errorLog);
+                    //hide abc2ps version for security reasons
+                    //TODO: hide lines starting with "writing MIDI file", "File", "Output written on", ... for boring reasons
+                    msg(nl2br($errorLog), 2);
                 }
                 // display files
                 foreach ($transSrc as $transMode) {
@@ -134,7 +138,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                 $renderer->doc .= $renderer->file($origSrc);
                 $renderer->doc .= "</div>";
             } else {
-                if ($error) print "<div class=\"error\">".$error."</div>";
+                if ($error && $this->getConf('abcok')) msg($error, -1);
                 $renderer->doc .= $renderer->file($origSrc);
             }
             return true;
@@ -143,21 +147,32 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * check if all needed programs are executable
+     * check if all needed programs are set, existent and executable
      */
     function _checkExecs() {
         global $conf;
-        if (!is_executable($this->getConf('abc2ps'))) {
-            $error .= $this->getConf('abc2ps')." (abc2ps) is not executable.<br />";
+        $error .= $this->_checkExec($this->getConf('abc2ps'), 'abc2ps');
+        $error .= $this->_checkExec($conf['im_convert'], 'im_convert');
+        if (($this->getConf('displayType')==1) || ($this->getConf('displayType')==2)) {
+            $tmpError1 = $this->_checkExec($this->getConf('abc2midi'), 'abc2midi');
+            if ($tmpError1) $error .= $tmpError1."If you do not wish to install it, you can change the 'displayType' to '0' ('image only').<br />";
         }
-        if (!is_executable($conf['im_convert'])) {
-            $error .= $conf['im_convert']." (im_convert) is not executable.<br />";
+        if($this->getConf('ps2pdf') && ($this->getConf('displayType')==2)) {
+            $tmpError2 = $this->_checkExec($this->getConf('ps2pdf'), 'ps2pdf');
+            if ($tmpError2) $error .= $tmpError2."If you do not wish to install it, you can leave it blank and a ps file will be generated instead.<br />";
         }
-        if (($this->getConf('displayType')==1 || $this->getConf('displayType')==2) && !is_executable($this->getConf('abc2midi'))) {
-            $error .= $this->getConf('abc2midi')." (abc2midi) is not executable.<br />If you do not want to install it, you can change the displayType to '0' ('image only').<br />";
-        }
-        if($this->getConf('ps2pdf') && ($this->getConf('displayType')==2) && !is_executable($this->getConf('ps2pdf'))) {
-            $error .= $this->getConf('ps2pdf')." (ps2pdf) is not executable.<br />If you do not want to install it, you can leave it blank and a ps file will be generated instead.<br />";
+        return $error;
+    }
+    /**
+     * check if a program is set, existent and executable
+     */
+    function _checkExec($execFile, $execName) {
+        if (!$execFile) {
+            $error .= "The '<strong>".$execName."</strong>' config option is <strong>not set</strong>.<br />";
+        } else if (!file_exists($execFile)) {
+            $error .= "'".$execFile."' (<strong>".$execName."</strong>) is <strong>not existent</strong>.<br />";
+        } else if (!is_executable($execFile)) {
+            $error .= "'".$execFile."' (<strong>".$execName."</strong>) is <strong>not executable</strong>.<br />";
         }
         return $error;
     }
@@ -169,12 +184,12 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
      * and the filename is a mixture of abc-id and abc-title (e.g. 42_the_title.abc|...)
      *
      */
-    function _getFileBase($savedir, $src) {
+    function _getFileBase($mediadir, $src) {
         global $ID;
         global $ACT;
 
         // where to store the abc media files
-        $abcdir = $savedir.'/media/plugin_abc';
+        $abcdir = $this->getConf('mediaNS') ? $mediadir.'/'.$this->getConf('mediaNS') : $mediadir;
         io_makeFileDir($abcdir);
         $fileDir = $abcdir.'/'.utf8_encodeFN(str_replace(':','/',getNS($ID)));
 
@@ -194,7 +209,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         $fileBase = $fileDir.$slashStr.$previewPrefix.$fileName;
         // unfortunately abcm2ps seems not to be able to handle
         // file names (realpath) of more than 120 characters 
-        $realFileBaseLen = (strlen(realpath($abcdir)) - strlen($abcdir)) + strlen($fileBase);
+        $realFileBaseLen = (strlen(fullpath($abcdir)) - strlen($abcdir)) + strlen($fileBase);
         $char_len = 114;
         if ($realFileBaseLen >= $char_len) {
             $truncLen = strlen($fileBase) + ($char_len - $realFileBaseLen);
@@ -251,7 +266,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
      * transpose and create transposed abc
      */
     function _transpose($abcFile, $srcFile, $trans) {
-        passthru(realpath($this->getConf('abc2abc'))." $srcFile -e -t $trans > $abcFile");
+        passthru(fullpath($this->getConf('abc2abc'))." $srcFile -e -t $trans > $abcFile");
     }
 
     /**
@@ -263,20 +278,20 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         $imgFile = $fileBase.'.png';
 
         // create eps file
-        passthru(realpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase.");
+        passthru(fullpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase. 2>&1");
 
         if($this->_debug) {
             echo "<h1>Debug Info for $abcFile</h1><pre>";
-            echo "==== create eps:".NL."-> ".realpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase.".NL;
+            echo "==== create eps:".NL."-> ".fullpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase.".NL;
             if(file_exists($epsFile)) echo "eps file '".$epsFile."' EXISTS".NL;
             else echo "eps file '".$epsFile."' DOES NOT EXIST".NL;
         }
 
         // convert eps to png file
-        passthru(realpath($conf['im_convert'])." $epsFile $imgFile");
+        passthru(fullpath($conf['im_convert'])." $epsFile $imgFile");
 
         if($this->_debug) {
-            echo NL."==== create png:".NL."-> ".realpath($conf['im_convert'])." $epsFile $imgFile".NL;
+            echo NL."==== create png:".NL."-> ".fullpath($conf['im_convert'])." $epsFile $imgFile".NL;
             if(file_exists($imgFile)) echo "img file '".$imgFile."' EXISTS".NL;
             else echo "img file '".$imgFile."' DOES NOT EXIST".NL;
             echo "</pre><hr />";
@@ -291,8 +306,8 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
     function _createPsFile($abcFile, $fileBase) {
         $psFile  = $fileBase.'.ps';
         $fmt = $this->getConf('fmt');
-        $addFmt = ($fmt && file_exists($fmt)) ? " -F ".realpath($fmt) : "";
-        passthru(realpath($this->getConf('abc2ps'))." $abcFile $addFmt ".$this->getConf('params4ps')." -O $psFile");
+        $addFmt = ($fmt && file_exists($fmt)) ? " -F ".fullpath($fmt) : "";
+        passthru(fullpath($this->getConf('abc2ps'))." $abcFile $addFmt ".$this->getConf('params4ps')." -O $psFile 2>&1");
     }
     /**
      * create pdf file
@@ -300,7 +315,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
     function _createPdfFile($abcFile, $fileBase) {
         $psFile  = $fileBase.'.ps';
         $pdfFile  = $fileBase.'.pdf';
-        passthru(realpath($this->getConf('ps2pdf'))." $psFile $pdfFile");
+        passthru(fullpath($this->getConf('ps2pdf'))." $psFile $pdfFile");
         if(file_exists($psFile)) unlink($psFile);
     }
     /**
@@ -308,7 +323,19 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
      */
     function _createMidiFile($abcFile, $fileBase) {
         $midFile = $fileBase.'.mid';
-        passthru(realpath($this->getConf('abc2midi'))." $abcFile -o $midFile");
+        passthru(fullpath($this->getConf('abc2midi'))." $abcFile -o $midFile");
+    }
+    /**
+     * get abc2ps version
+     */
+    function _getAbc2psVersion() {
+        global $conf;
+        ob_start();
+        passthru(fullpath($this->getConf('abc2ps'))." -V 2>&1");
+        $version = ob_get_contents();
+        $version = explode("\n",$version);
+        ob_end_clean();
+        return $version[0];
     }
 
     /**
@@ -334,7 +361,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         if($imgFile) {
             $imgSize = getimagesize($imgFile);
             $imgSize = $imgSize[3];
-            return "<img src=\"".$abcMediaUrl.$this->_getFileID($imgFile)."\" $imgSize alt=\"\" />";
+            return "<img src=\"".$abcMediaUrl.$this->_getFileID($imgFile)."&amp;t=".time()."\" $imgSize alt=\"\" />";
         } else {
             return "Error: The image could not be generated.";
         }
@@ -351,7 +378,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         $psFile  = $this->_getFile($fileBase, '.ps');
         $pdfFile = $this->_getFile($fileBase, '.pdf');
         $display = "";
-        $abcMediaUrl=DOKU_BASE."lib/exe/fetch.php?cache=cache&amp;media=plugin_abc:";
+        $abcMediaUrl=DOKU_BASE."lib/exe/fetch.php?media=".$this->getConf('mediaNS').":";
         $showImg = $this->_showImg($imgFile, $abcMediaUrl);
 
         switch ($this->getConf('displayType')) {
@@ -365,7 +392,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
             case 1:
                 $display = $showImg;
                 if($midFile) {
-                    $display = "<a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."\">".$display."</a>";
+                    $display = "<a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."&amp;t=".time()."\">".$display."</a>";
                 }
                 break;
 
@@ -373,14 +400,14 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
             case 2:
                 $display = "<ul>\n";
                 // abc file is always there
-                $display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($abcFile)."\" class=\"media mediafile mf_abc\">".$this->_getFileID($abcFile)."</a></li>\n";
+                $display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($abcFile)."&amp;t=".time()."\" class=\"media mediafile mf_abc\">".$this->_getFileID($abcFile)."</a></li>\n";
                 // midi file
-                $display .= $midFile ? "<li><a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."\" class=\"media mediafile mf_mid\">".$this->_getFileID($midFile)."</a></li>\n" : "";
+                $display .= $midFile ? "<li><a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."&amp;t=".time()."\" class=\"media mediafile mf_mid\">".$this->_getFileID($midFile)."</a></li>\n" : "";
                 // display pdf file if there is any, else display ps file
                 if ($this->getConf('ps2pdf') && $pdfFile) {
-                    $display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($pdfFile)."\" class=\"media mediafile mf_pdf\">".$this->_getFileID($pdfFile)."</a></li>\n";
+                    $display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($pdfFile)."&amp;t=".time()."\" class=\"media mediafile mf_pdf\">".$this->_getFileID($pdfFile)."</a></li>\n";
                 } else {
-                    $display .= $psFile ? "<li><a href=\"".$abcMediaUrl.$this->_getFileID($psFile)."\" class=\"media mediafile mf_ps\">".$this->_getFileID($psFile)."</a></li>\n" : "";
+                    $display .= $psFile ? "<li><a href=\"".$abcMediaUrl.$this->_getFileID($psFile)."&amp;t=".time()."\" class=\"media mediafile mf_ps\">".$this->_getFileID($psFile)."</a></li>\n" : "";
                 }
                 $display .= "</ul>\n";
                 $display .= $showImg;

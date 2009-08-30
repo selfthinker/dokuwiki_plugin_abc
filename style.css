@@ -26,7 +26,8 @@ div.abc ul {
 div.abc li {
     list-style: none;
 }
-/* if you allow midi files per mime(.local).conf, you should comment the follow lines out */
+/* if you allow midi files per mime(.local).conf, you should comment the follow lines out
 a.mf_mid {
     background-image: url(mid.png);
 }
+ */

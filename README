@@ -1,5 +1,7 @@
-ABC Plugin (http://wiki.splitbrain.org/plugin:abc)
-for DokuWiki (http://www.splitbrain.org/dokuwiki/wiki:dokuwiki) version 2007-06-03
+ABC Plugin (http://dokuwiki.org/plugin:abc)
+for ABC notation (http://abcnotation.org.uk/)
+in DokuWiki (http://dokuwiki.org/)
 
-version: 2007-06-03
-author: Anika Henke <a.c.henke@arcor.de>
+version: 2008-08-17
+author:  Anika Henke <anika@selfthinker.org>
+license: GPL 2 (http://www.gnu.org/licenses/gpl.html)

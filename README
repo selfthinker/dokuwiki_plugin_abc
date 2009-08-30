@@ -1,9 +1,5 @@
-These configuration parameters have to be added to ./conf/dokuwiki.php or better to ./conf/local.php:
+ABC Plugin (http://wiki.splitbrain.org/plugin:abc)
+for DokuWiki (http://www.splitbrain.org/dokuwiki/wiki:dokuwiki) devel version
 
-$conf['abcok']      = 1;                  //may ABC be embedded? 0|1
-$conf['abcPS']      = '/usr/bin/abcm2ps'; //where to find abcm2ps (or abc2ps or jcabc2ps or jaabc2ps or yaps)
-$conf['abcConvert'] = '/usr/bin/convert'; //where to find convert from ImageMagick
-$conf['abcMIDI']    = '/usr/bin/abc2midi';//where to find abc2midi
-$conf['abcABC']	    = '/usr/bin/abc2abc'; //where to find abc2abc (0 for disallowing transposition)
-$conf['abcDisplayType']  = 1;             //how to display the output: 0 = image only; 1 = image linked to midi; 2 = image with list of abc, midi, ps
-$conf['abcFmtFile'] = 0;                  //where to find an abcm2ps format file to format the PS file = './foo.fmt'; no format file = 0
+version: 2006-07-23
+author: Anika Henke <a.c.henke@arcor.de>

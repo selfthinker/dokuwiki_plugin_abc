@@ -1,0 +1,12 @@
+div.abc {
+	padding: 0.5em 0 1.0em 0;
+	margin: 0 0 0.5em 0;
+	background-color: #fff;
+	color: #000;
+}
+div.abc pre {
+	display: none;
+}
+div.visible pre {
+	display: block !important;
+}

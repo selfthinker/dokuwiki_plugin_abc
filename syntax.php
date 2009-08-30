@@ -4,10 +4,8 @@
  * for DokuWiki (http://www.splitbrain.org/dokuwiki/wiki:dokuwiki)
  * 
  * todo:
- *   * .trans file is not needed anymore with the trans number appended to each file
- *   * if transMode has changed, it is not necessary to parse *all* files again
- *   * remove transposed files when digit is deleted
  *   * remove previewed files
+ *   * add corresponding css for file icons when displayType = 2
  * maybe ...
  *   * show only links to transposed PNGs instead of displaying them?
  *   * create pdfs?
@@ -16,13 +14,12 @@
  * 
  * @license		GPL 2 (http://www.gnu.org/licenses/gpl.html)
  * @author		A.C. Henke <a.c.henke@arcor.de>
- * @version		2006-02-27a
+ * @version		2006-07-23
  */
 
 if(!defined('DOKU_INC')) define('DOKU_INC',realpath(dirname(__FILE__).'/../../').'/');
 if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
 require_once(DOKU_PLUGIN.'syntax.php');
-
 
 class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 
@@ -30,7 +27,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 		return array(
 			'author' => 'A.C. Henke',
 			'email'  => 'a.c.henke@arcor.de',
-			'date'   => '2006-02-27a',
+			'date'   => '2006-07-23',
 			'name'   => 'ABC Plugin',
 			'desc'   => 'Displays sheet music (input ABC, output png with midi)',
 			'url'    => 'http://wiki.splitbrain.org/plugin:abc',
@@ -69,79 +66,65 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 	 */
 	function render($mode, &$renderer, $data) {
 		global $conf;
-		global $ID;
-		global $ACT;
 		global $INFO;
 		if($mode == 'xhtml' && strlen($data[0]) > 1){
 			$src = $data[0];
-			if ($conf['abcABC']) {
-				$trans = "0 ".$data[1];//"0" includes the original key
-				$transArr = explode(" ", $trans);
-				$transArr = array_map("intval", $transArr);//the semitones to transpose have to be integers
-				$transArr = array_unique($transArr);//do not transpose by X semitones more than once
-				array_splice($transArr, 8);//do not allow transposition into more than 8 keys
-			} else {
-				$transArr = array(0);
-			}
+			$trans = "0 ".$data[1]; // "0" includes the original key
 
-			if($conf['abcok'] && !$INFO['rev']){
-				$abcdir = $conf['savedir'].'/media/plugin_abc';//where to store the abc media files
-				io_makeFileDir($abcdir);
+			$error = $this->_checkExecs();
+			if($this->getConf('abcok') && !$INFO['rev'] && !$error){
 
-				$fileBase = $abcdir.'/'.utf8_encodeFN(str_replace(':','/',getNS($ID)));
-				/* titles or ids (X:) can be ambiguous, so the filename is a mixture of id and title like
-				42_the_title.abc|... */
-				if ($ACT!='preview') {
-					$fileBase .= '/'.cleanID($this->_getAbcID($src)."_".$this->_getAbcTitle($src));
-				} else {
-					$fileBase .= '/x'.cleanID($this->_getAbcID($src)."_".$this->_getAbcTitle($src));
-				}
-				/* unfortunately abcm2ps seems not to be able to handle file names (realpath) of more than 120 characters */
-				$realFileBaseLen = (strlen(realpath($abcdir)) - strlen($abcdir)) + strlen($fileBase);
-				if ($realFileBaseLen >= 116) {
-					$truncLen = strlen($fileBase) + (116 - $realFileBaseLen);
-					$fileBase = substr($fileBase, 0, $truncLen);
-				}
-
-				$transFile = $fileBase.'.trans';
-				if ($conf['abcABC'] && (!file_exists($transFile) || $trans!=io_readFile($transFile) )) {
-					$this->_createTransFile($transFile, $trans);
-					$transChanged = 1;
-				}
+				$fileBase = $this->_getFileBase($conf['savedir'], $src);
 				$srcFile = $fileBase.'.abc';
-				if (file_exists($srcFile)) {
-					$srcChanged = ($src!=io_readFile($srcFile));
-				}
-				if ($conf['abcABC'] && (!file_exists($srcFile) || $srcChanged)) {
-					$this->_createAbcFile($srcFile, $src);
-				}
+				$srcChanged = (!file_exists($srcFile) || (file_exists($srcFile) && $src!=io_readFile($srcFile)));
+				if ($srcChanged) io_saveFile($srcFile, $src);
 
-				foreach ($transArr as $transMode) {
-					if ($transMode<24 && $transMode>-24) {
-						if (!$conf['abcABC'] || $transMode==0) {
-							$curFileBase = $fileBase;
-						} else {
-							$curFileBase = $fileBase."_".$transMode;
-						}
-						$abcFile = $curFileBase.'.abc';
-						if (!file_exists($abcFile) || $srcChanged || $transChanged) {
-							$this->_createAbcFile($abcFile, $src);
-							if ($conf['abcABC'] && $transMode!=0) {
-								$this->_transpose($abcFile, $srcFile, $transMode);
-							}
-							$this->_createImgFile($abcFile, $curFileBase);
+				if ($this->getConf('abc2abc') && is_executable($this->getConf('abc2abc'))) {
+					$transSrc = $this->_getTransSrc($trans);
+					$transNew = $this->_getTransNew($fileBase, $transSrc);
+				} else {
+					$transSrc = array(0);
+					$transNew = array();
+				}
+				$renderList = $srcChanged ? $transSrc : $transNew;
 
-							if ($conf['abcDisplayType']==1 || $conf['abcDisplayType']==2) {
-								$this->_createMidiFile($abcFile, $curFileBase);
-							}
-							if ($conf['abcDisplayType']==2) {
-								$this->_createPsFile($abcFile, $curFileBase);
-							}
-						}
-						$renderer->doc .= $this->_showFiles($curFileBase, $conf['abcDisplayType']);
+				// create files
+				foreach ($renderList as $transMode) {
+					// if no transposition is allowed and the tune shall be transposed
+					// by 0 semitones (= not at all), then nothing is appended to the fileBase;
+					// else append the amount of semitiones to the fileBase
+					$curFileBase = ($transMode==0) ? $fileBase : $fileBase."_".$transMode;
+					$abcFile = $curFileBase.'.abc';
+					io_saveFile($abcFile, $src);
+
+					ob_start();
+					if ($transMode!=0) {
+						$this->_transpose($abcFile, $srcFile, $transMode);
 					}
+					$this->_createImgFile($abcFile, $curFileBase);
+
+					if ($this->getConf('displayType')==1 || $this->getConf('displayType')==2) {
+						$this->_createMidiFile($abcFile, $curFileBase);
+					}
+					if ($this->getConf('displayType')==2) {
+						$this->_createPsFile($abcFile, $curFileBase);
+					}
+					ob_end_clean();
 				}
+				// display files
+				foreach ($transSrc as $transMode) {
+					$curFileBase = ($transMode==0) ? $fileBase : $fileBase."_".$transMode;
+					$renderer->doc .= $this->_showFiles($curFileBase);
+				}
+
+				// always have the abc source in the html source (for search engine optimization)
+				// only per css visible when displaySource = 1
+				if ($this->getConf('displaySource')) $visible = " visible";
+				$renderer->doc .= "<div class=\"abc".$visible."\">";
+				$renderer->doc .= $renderer->file($src);
+				$renderer->doc .= "</div>";
 			} else {
+				if ($error) print "<div class=\"error\">".$error."</div>";
 				$renderer->doc .= $renderer->file($src);
 			}
 			return true;
@@ -149,82 +132,170 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 		return false;
 	}
 
-	function _getAbcTitle ($src) {
-		preg_match("/\s?T\s?:(.*?)\n/se", $src, $matchesT);
-		$title = preg_replace('/\s?T\s?:/', '', $matchesT[0]);
-
-		return $title;
-	}
-	function _getAbcID ($src) {
-		preg_match("/\s?X\s?:(.*?)\n/se", $src, $matchesX);
-		$id = preg_replace('/\s?X\s?:/', '', $matchesX[0]);
-
-		return $id;
-	}
-
-	//transpose and create transposed abc
-	function _transpose($abcFile, $srcFile, $trans) {
+	/**
+	 * check if all needed programs are executable
+	 */
+	function _checkExecs() {
 		global $conf;
-		passthru(realpath($conf['abcABC'])." $srcFile -t $trans > $abcFile");
-	}
-	//store somewhere the amount of semitones to transpose
-	function _createTransFile($transFile, $trans) {
-		io_saveFile($transFile, $trans);
+		if (!is_executable($this->getConf('abc2ps'))) {
+			$error .= $this->getConf('abc2ps')." (abc2ps) is not executable.<br />";
+		}
+		if (!is_executable($conf['im_convert'])) {
+			$error .= $conf['im_convert']." (im_convert) is not executable.<br />";
+		}
+		if (($this->getConf('displayType')==1 || $this->getConf('displayType')==2) && !is_executable($this->getConf('abc2midi'))) {
+			$error .= $this->getConf('abc2midi')." (abc2midi) is not executable.<br />If you do not want to install it, you can change the displayType to '0' ('image only').<br />";
+		}
+		return $error;
 	}
 
-	//create files (abc, img, ps, midi)
-	function _createAbcFile($abcFile, $src) {
-		io_saveFile($abcFile, $src);
+	/**
+	 * get to-be directory and filename (without extension)
+	 * 
+	 * all files are stored in the media directory into 'plugin_abc/<namespaces>/'
+	 * and the filename is a mixture of abc-id and abc-title (e.g. 42_the_title.abc|...)
+	 *
+	 */
+	function _getFileBase($savedir, $src) {
+		global $ID;
+		global $ACT;
+
+		// where to store the abc media files
+		$abcdir = $savedir.'/media/plugin_abc';
+		io_makeFileDir($abcdir);
+		$fileDir = $abcdir.'/'.utf8_encodeFN(str_replace(':','/',getNS($ID)));
+
+		// the abcID is what comes after the 'X:'
+		preg_match("/\s?X\s?:(.*?)\n/se", $src, $matchesX);
+		$abcID = preg_replace('/\s?X\s?:/', '', $matchesX[0]);
+		// the abcTitle is what comes after the (first) 'T:'
+		preg_match("/\s?T\s?:(.*?)\n/se", $src, $matchesT);
+		$abcTitle = preg_replace('/\s?T\s?:/', '', $matchesT[0]);
+		$fileName = cleanID($abcID."_".$abcTitle);
+
+		// have different fileBase for previewing
+		if ($ACT!='preview') {
+			$fileBase = $fileDir.'/'.$fileName;
+		} else {
+			$fileBase = $fileDir.'/x'.$fileName;
+		}
+		// unfortunately abcm2ps seems not to be able to handle
+		// file names (realpath) of more than 120 characters 
+		$realFileBaseLen = (strlen(realpath($abcdir)) - strlen($abcdir)) + strlen($fileBase);
+		if ($realFileBaseLen >= 116) {
+			$truncLen = strlen($fileBase) + (116 - $realFileBaseLen);
+			$fileBase = substr($fileBase, 0, $truncLen);
+		}
+		return $fileBase;
 	}
+
+	/**
+	 * get transposition parameters from the source into a reasonable array
+	 */
+	function _getTransSrc($trans) {
+		$transSrc = explode(" ", $trans);
+		// the semitones to transpose have to be integers
+		$transSrc = array_map("intval", $transSrc);
+		// do not transpose by the same amount of semitones more than once
+		$transSrc = array_unique($transSrc);
+		// do not transpose higher or lower than 24 semitones
+		$transSrc = array_filter($transSrc, create_function('$t', 'return($t<24 && $t >-24);'));
+		// do not allow transposition into more than 8 keys
+		array_splice($transSrc, 8);
+		return $transSrc;
+	}
+
+	/**
+	 * get all new and old trans params
+	 * return the new params, delete the corresponding old files
+	 */
+	function _getTransNew($fileBase, $transSrc) {
+		// get all abc files belonging to the fileBase
+		$filesArrABC = glob(dirname($fileBase)."/{".basename($fileBase)."*.abc}", GLOB_BRACE);
+		$transFS = array(0); // always include the original key
+		// get all numbers after the '_' and before the '.abc'
+		foreach ($filesArrABC as $f) {
+			$f = basename($f, ".abc");
+			$tr = substr(strrchr($f,'_'),1);
+			if (intval($tr)) $transFS[] = $tr;
+		}
+
+		$transNew = array_diff($transSrc, $transFS);
+		$transOld = array_diff($transFS, $transSrc);
+
+		// delete old transposed files
+		foreach ($transOld as $o) {
+			$filesArrAll = glob(dirname($fileBase)."/{".basename($fileBase)."_".$o."*}", GLOB_BRACE);
+			foreach ($filesArrAll as $d) { 
+				unlink($d);
+			}
+		}
+		return $transNew;
+	}
+
+	/**
+	 * transpose and create transposed abc
+	 */
+	function _transpose($abcFile, $srcFile, $trans) {
+		passthru(realpath($this->getConf('abc2abc'))." $srcFile -t $trans > $abcFile");
+	}
+
+	/**
+	 * create img file
+	 */
 	function _createImgFile($abcFile, $fileBase) {
 		global $conf;
 
 		$epsFile = $fileBase.'001.eps';
 		$imgFile = $fileBase.'.png';
-		ob_start();
-		passthru(realpath($conf['abcPS'])." $abcFile -s 1 -w 600 -E -O $fileBase.");
-		//without a special width: passthru(realpath($conf['abcPS'])." $abcFile -s 1 -E -O $fileBase.");
-		ob_end_clean();
-		ob_start();
-		passthru(realpath($conf['abcConvert'])." $epsFile $imgFile");
-		ob_end_clean();
+		passthru(realpath($this->getConf('abc2ps'))." $abcFile -s 1 -w 600 -E -O $fileBase.");
+		/* without a special width: 
+		passthru(realpath($this->getConf('abc2ps'))." $abcFile -s 1 -E -O $fileBase.");
+		*/
+		passthru(realpath($conf['im_convert'])." $epsFile $imgFile");
 		if(file_exists($epsFile)) unlink($epsFile);
 	}
+	/**
+	 * create ps file
+	 */
 	function _createPsFile($abcFile, $fileBase) {
-		global $conf;
 		$psFile  = $fileBase.'.ps';
-		ob_start();
-		if ($conf['abcFmtFile']) {
-			$format = $conf['abcFmtFile']?"-F ".realpath($conf['abcFmtFile']):"-s 1";
-			passthru(realpath($conf['abcPS'])." $abcFile $format -O $psFile");
+		$fmt = $this->getConf('fmt');
+		if ($fmt && file_exists($fmt)) {
+			passthru(realpath($this->getConf('abc2ps'))." $abcFile -F ".realpath($fmt)." -O $psFile");
 		} else {
-			passthru(realpath($conf['abcPS'])." $abcFile -O $psFile");
+			passthru(realpath($this->getConf('abc2ps'))." $abcFile -O $psFile");
 		}
-		ob_end_clean();
 	}
+	/**
+	 * create midi file
+	 */
 	function _createMidiFile($abcFile, $fileBase) {
-		global $conf;
 		$midFile = $fileBase.'.mid';
-		ob_start();
-		passthru(realpath($conf['abcMIDI'])." $abcFile -o $midFile");
-		ob_end_clean();
+		passthru(realpath($this->getConf('abc2midi'))." $abcFile -o $midFile");
 	}
 
-	//get files (abc, img, ps, midi)
+	/**
+	 * get file and check if it exists
+	 */
 	function _getFile($fileBase, $ext) {
 		$file = $fileBase.$ext;
 		return (file_exists($file)) ? $file : 0;
 	}
 
-	//get ID that has to be called from fetch.php
+	/**
+	 * get ID that has to be called from fetch.php
+	 */
 	function _getFileID($file) {
 		global $ID;
-		return (getNS($ID)) ? getNS($ID).":".substr(strrchr($file,'/'),1) : substr(strrchr($file,'/'),1);
+		return (getNS($ID)) ? getNS($ID).":".basename($file) : basename($file);
 	}
 
 
-	//display on screen
-	function _showFiles($fileBase, $displayType) {
+	/**
+	 * html for displaying all files; dependant on displayType
+	 */
+	function _showFiles($fileBase) {
 		$imgFile = $this->_getFile($fileBase, '.png');
 		$midFile = $this->_getFile($fileBase, '.mid');
 		$abcFile = $this->_getFile($fileBase, '.abc');
@@ -236,24 +307,27 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 			$imgSize = getimagesize($imgFile);
 			$imgSize = $imgSize[3];
 
-			switch ($displayType) {
-				case 1:	//image linked to midi
+			switch ($this->getConf('displayType')) {
+				// image linked to midi
+				case 1:
 					$display = "<img src=\"".$abcMediaUrl.$this->_getFileID($imgFile)."\" $imgSize alt=\"\" />";
 					if($midFile) {
 						$display = "<a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."\">".$display."</a>";
 					}
 					break;
 
-				case 2: //image with list of abc, midi, ps
+				// image with list of abc, midi, ps
+				case 2:
 					$display = "<ul>\n";
-					$display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($abcFile)."\">".$this->_getFileID($abcFile)."</a></li>\n";
-					$display .= $midFile?"<li><a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."\">".$this->_getFileID($midFile)."</a></li>\n":"";
-					$display .= $psFile?"<li><a href=\"".$abcMediaUrl.$this->_getFileID($psFile)."\">".$this->_getFileID($psFile)."</a></li>\n":"";
+					$display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($abcFile)."\" class=\"media\">".$this->_getFileID($abcFile)."</a></li>\n";
+					$display .= $midFile?"<li><a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."\" class=\"media\">".$this->_getFileID($midFile)."</a></li>\n":"";
+					$display .= $psFile?"<li><a href=\"".$abcMediaUrl.$this->_getFileID($psFile)."\" class=\"media\">".$this->_getFileID($psFile)."</a></li>\n":"";
 					$display .= "</ul>\n";
 					$display .= "<img src=\"".$abcMediaUrl.$this->_getFileID($imgFile)."\" $imgSize alt=\"\" />\n";
 					break;
 
-				case 0: //image only (case 0 and default)
+				// image only (case 0 and default)
+				case 0:
 				default:
 					$display = "<img src=\"".$abcMediaUrl.$this->_getFileID($imgFile)."\" $imgSize alt=\"\" />";
 					break;

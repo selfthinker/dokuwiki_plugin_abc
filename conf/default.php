@@ -13,3 +13,6 @@ $conf['abc2midi']       = '';
 $conf['ps2pdf']         = '';
 $conf['abc2abc']        = '';
 $conf['fmt']            = '';
+
+$conf['params4img']     = '-s 1 -w 600';
+$conf['params4ps']      = '';

@@ -13,3 +13,6 @@ $meta['abc2midi']       = array('string');
 $meta['ps2pdf']         = array('string');
 $meta['abc2abc']        = array('string');
 $meta['fmt']            = array('string');
+
+$meta['params4img']     = array('string');
+$meta['params4ps']      = array('string');

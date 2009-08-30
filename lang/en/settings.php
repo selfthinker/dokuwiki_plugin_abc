@@ -14,6 +14,9 @@ $lang['ps2pdf']         = 'Where to find ps2pdf (optional, only needed if the ou
 $lang['abc2abc']        = 'Where to find abc2abc (leave blank for disallowing transposition)';
 $lang['fmt']            = 'Where to find an abcm2ps format file (e.g. "foo.fmt") to format the PS/PDF file (optional)';
 
+$lang['params4img']     = 'Parameters for abcm2ps when generating the image (optional, for experts only!)';
+$lang['params4ps']      = 'Parameters for abcm2ps when generating the ps/pdf file (optional, for experts only!)';
+
 /* displayType options */
 $lang['displayType_o_0'] = 'image only';
 $lang['displayType_o_1'] = 'image linked to midi';

@@ -1,12 +1,32 @@
 div.abc {
-	padding: 0.5em 0 1.0em 0;
-	margin: 0 0 0.5em 0;
-	background-color: #fff;
-	color: #000;
+    padding: 0.5em;
+    margin: 0 0 0.5em 0;
+    background-color: #fff;
+    color: #000;
+    border-top: 1px solid #ccc;
+    border-right: 2px solid #aaa;
+    border-bottom: 2px solid #aaa;
+    border-left: 1px solid #ccc;
+    text-align: center;
 }
-div.abc pre {
-	display: none;
+div.abc_src {
+    display: none;
+    padding: 0.5em;
+    margin: 0 0 0.5em 0;
+    border: none;
 }
-div.visible pre {
-	display: block !important;
+div.visible {
+    display: block !important;
+    border: 1px solid #ccc;
+}
+div.abc ul {
+    border-bottom: 1px dotted #ccc;
+    text-align: left;
+}
+div.abc li {
+    list-style: none;
+}
+/* if you allow midi files per mime(.local).conf, you should comment the follow lines out */
+a.mf_mid {
+    background-image: url(mid.png);
 }

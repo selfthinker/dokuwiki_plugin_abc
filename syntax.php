@@ -15,8 +15,6 @@ require_once(DOKU_PLUGIN.'syntax.php');
 
 class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 
-    var $_debug = 0;
-
     function getInfo(){
         return array(
             'author' => 'Anika Henke',
@@ -61,10 +59,12 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
     function render($mode, &$renderer, $data) {
         global $INFO;
         global $ACT;
+        global $conf;
         if($mode == 'xhtml' && strlen($data[0]) > 1){
             $src = $data[0];
             $origSrc = $src;
             $trans = "0 ".$data[1]; // "0" includes the original key
+            $debug = $conf['allowdebug'];
 
             $error = $this->_checkExecs();
             if($this->getConf('abcok') && (!$INFO['rev'] || ($INFO['rev'] && ($ACT=='preview'))) && !$error){
@@ -88,7 +88,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                     $transNew = array();
                 }
                 $renderList = $srcChanged ? $transSrc : $transNew;
-                if($this->_debug || $_REQUEST['purge']) $renderList = $transSrc;
+                if($debug || $_REQUEST['purge']) $renderList = $transSrc;
 
                 // create files
                 foreach ($renderList as $transMode) {
@@ -99,12 +99,12 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                     $abcFile = $curFileBase.'.abc';
                     io_saveFile($abcFile, $src);
 
-                    if(!$this->_debug) ob_start();
+                    ob_start();
 
                     if ($transMode!=0) {
                         $this->_transpose($abcFile, $srcFile, $transMode);
                     }
-                    $this->_createImgFile($abcFile, $curFileBase);
+                    $debugLog = $this->_createImgFile($abcFile, $curFileBase);
 
                     if ($this->getConf('displayType')==1 || $this->getConf('displayType')==2) {
                         $this->_createMidiFile($abcFile, $curFileBase);
@@ -116,13 +116,16 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                         }
                     }
                     $errorLog = ob_get_contents();
-                    if(!$this->_debug) ob_end_clean();
+                    ob_end_clean();
                 }
-                if ($this->getConf('displayErrorlog') && $errorLog) {
+                if (($this->getConf('displayErrorlog') || $debug) && $errorLog) {
                     $errorLog = str_replace($this->_getAbc2psVersion(), "abc2ps", $errorLog);
                     //hide abc2ps version for security reasons
                     //TODO: hide lines starting with "writing MIDI file", "File", "Output written on", ... for boring reasons
                     msg(nl2br($errorLog), 2);
+                }
+                if ($debugLog) {
+                    msg($debugLog);
                 }
                 // display files
                 foreach ($transSrc as $transMode) {
@@ -137,7 +140,9 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                 $renderer->doc .= $renderer->file($origSrc);
                 $renderer->doc .= '</div>'.NL;
             } else {
-                if ($error && $this->getConf('abcok')) msg($error, -1);
+                if ($error && $this->getConf('abcok')) {
+                    msg($error, -1);
+                }
                 $renderer->doc .= $renderer->file($origSrc);
             }
             return true;
@@ -277,29 +282,35 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         global $conf;
         $epsFile = $fileBase.'001.eps';
         $imgFile = $fileBase.'.png';
+        $debug = $conf['allowdebug'];
+        $debugOutput = '';
 
         // create eps file
-        passthru(fullpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase. 2>&1");
+        $epsCommand = fullpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase.";
+        passthru($epsCommand." 2>&1");
 
-        if($this->_debug) {
-            echo "<h1>Debug Info for $abcFile</h1><pre>";
-            echo "==== create eps:".NL."-> ".fullpath($this->getConf('abc2ps'))." $abcFile ".$this->getConf('params4img')." -E -O $fileBase.".NL;
-            if(file_exists($epsFile)) echo "eps file '".$epsFile."' EXISTS".NL;
-            else echo "eps file '".$epsFile."' DOES NOT EXIST".NL;
+        if($debug) {
+            $debugOutput .= "<h3>Debug Info for $abcFile</h3>";
+            $debugOutput .= "<p>EPS file '".$epsFile."'";
+            $debugOutput .= file_exists($epsFile) ? " <strong>exists</strong>" : " <strong>does not exist</strong>";
+            $debugOutput .= ", command used to create it:</p>";
+            $debugOutput .= "<pre>".$epsCommand."</pre>";
         }
 
         // convert eps to png file
-        passthru(fullpath($conf['im_convert'])." $epsFile $imgFile");
+        $pngCommand = fullpath($conf['im_convert'])." $epsFile $imgFile";
+        passthru($pngCommand);
 
-        if($this->_debug) {
-            echo NL."==== create png:".NL."-> ".fullpath($conf['im_convert'])." $epsFile $imgFile".NL;
-            if(file_exists($imgFile)) echo "img file '".$imgFile."' EXISTS".NL;
-            else echo "img file '".$imgFile."' DOES NOT EXIST".NL;
-            echo "</pre><hr />";
+        if($debug) {
+            $debugOutput .= "<p>PNG file '".$imgFile."'";
+            $debugOutput .= file_exists($imgFile) ? " <strong>exists</strong>" : " <strong>does not exist</strong>";
+            $debugOutput .= ", command used to create it:</p>";
+            $debugOutput .= "<pre>".$pngCommand."</pre>";
         } else {
             if(file_exists($epsFile)) unlink($epsFile);
         }
 
+        return $debugOutput;
     }
     /**
      * create ps file

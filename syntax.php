@@ -3,7 +3,7 @@
  * ABC Plugin (http://dokuwiki.org/plugin:abc)
  * for ABC notation (http://abcnotation.org.uk/)
  * in DokuWiki (http://dokuwiki.org/)
- * 
+ *
  * @license     GPL 2 (http://www.gnu.org/licenses/gpl.html)
  * @author      Anika Henke <anika@selfthinker.org>
  * @version     2008-08-17
@@ -59,7 +59,6 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
      * Create output
      */
     function render($mode, &$renderer, $data) {
-        global $conf;
         global $INFO;
         global $ACT;
         if($mode == 'xhtml' && strlen($data[0]) > 1){
@@ -76,7 +75,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                     $entities = confToHash($entitiesFile);
                     $src = strtr($src,$entities);
                 }
-                $fileBase = $this->_getFileBase($conf['mediadir'], $origSrc);
+                $fileBase = $this->_getFileBase($origSrc);
                 $srcFile = $fileBase.'.abc';
                 $srcChanged = (!file_exists($srcFile) || (file_exists($srcFile) && $src!=io_readFile($srcFile)));
                 if ($srcChanged) io_saveFile($srcFile, $src);
@@ -134,9 +133,9 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                 // always have the abc source in the html source (for search engine optimization)
                 // only per css visible when displaySource = 1
                 if ($this->getConf('displaySource')) $visible = " visible";
-                $renderer->doc .= "<div class=\"abc_src".$visible."\">";
+                $renderer->doc .= '<div class="abc_src'.$visible.'">'.NL;
                 $renderer->doc .= $renderer->file($origSrc);
-                $renderer->doc .= "</div>";
+                $renderer->doc .= '</div>'.NL;
             } else {
                 if ($error && $this->getConf('abcok')) msg($error, -1);
                 $renderer->doc .= $renderer->file($origSrc);
@@ -179,14 +178,16 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 
     /**
      * get to-be directory and filename (without extension)
-     * 
+     *
      * all files are stored in the media directory into 'plugin_abc/<namespaces>/'
      * and the filename is a mixture of abc-id and abc-title (e.g. 42_the_title.abc|...)
      *
      */
-    function _getFileBase($mediadir, $src) {
+    function _getFileBase($src) {
         global $ID;
         global $ACT;
+        global $conf;
+        $mediadir = $conf['mediadir'];
 
         // where to store the abc media files
         $abcdir = $this->getConf('mediaNS') ? $mediadir.'/'.$this->getConf('mediaNS') : $mediadir;
@@ -208,7 +209,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
 
         $fileBase = $fileDir.$slashStr.$previewPrefix.$fileName;
         // unfortunately abcm2ps seems not to be able to handle
-        // file names (realpath) of more than 120 characters 
+        // file names (realpath) of more than 120 characters
         $realFileBaseLen = (strlen(fullpath($abcdir)) - strlen($abcdir)) + strlen($fileBase);
         $char_len = 114;
         if ($realFileBaseLen >= $char_len) {
@@ -255,7 +256,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         // delete old transposed files
         foreach ($transOld as $o) {
             $filesArrAll = glob(dirname($fileBase)."/{".basename($fileBase)."_".$o."*}", GLOB_BRACE);
-            foreach ($filesArrAll as $d) { 
+            foreach ($filesArrAll as $d) {
                 unlink($d);
             }
         }
@@ -329,7 +330,6 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
      * get abc2ps version
      */
     function _getAbc2psVersion() {
-        global $conf;
         ob_start();
         passthru(fullpath($this->getConf('abc2ps'))." -V 2>&1");
         $version = ob_get_contents();
@@ -355,15 +355,26 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
     }
 
     /**
-     * show image (or an error if it does not exist)
+     * html for internal media
      */
-    function _showImg($imgFile, $abcMediaUrl) {
-        if($imgFile) {
-            $imgSize = getimagesize($imgFile);
+    function _showFile($file) {
+        if (!$file) {
+            return "Error: The file could not be generated.";
+        }
+
+        $mediaNS = $this->getConf('mediaNS').":";
+        $name = $this->_getFileID($file);
+        $id = $mediaNS.$name;
+        $url = ml($id, array('t' => time())); // add timestamp for cache busting
+        list($ext, $mime) = mimetype($file, false);
+
+        if(substr($mime, 0, 5) == 'image') {
+            $imgSize = getimagesize($file);
             $imgSize = $imgSize[3];
-            return "<img src=\"".$abcMediaUrl.$this->_getFileID($imgFile)."&amp;t=".time()."\" $imgSize alt=\"\" />";
+            return '<img src="'.$url.'" '.$imgSize.' alt="" />';
         } else {
-            return "Error: The image could not be generated.";
+            $class = 'mediafile mf_'.preg_replace('/[^_\-a-z0-9]+/i', '_', $ext);
+            return '<a href="'.$url.'" class="'.$class.'">'.$name.'</a>';
         }
     }
 
@@ -377,44 +388,43 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         $abcFile = $this->_getFile($fileBase, '.abc');
         $psFile  = $this->_getFile($fileBase, '.ps');
         $pdfFile = $this->_getFile($fileBase, '.pdf');
-        $display = "";
-        $abcMediaUrl=DOKU_BASE."lib/exe/fetch.php?media=".$this->getConf('mediaNS').":";
-        $showImg = $this->_showImg($imgFile, $abcMediaUrl);
+        $mediaNS = $this->getConf('mediaNS').":";
+        $showImg = $this->_showFile($imgFile);
 
         switch ($this->getConf('displayType')) {
             // image only (case 0 and default)
             default:
             case 0:
-                $display = $showImg;
+                $display = '<p>'.$showImg.'</p>'.NL;
                 break;
 
             // image linked to midi
             case 1:
                 $display = $showImg;
                 if($midFile) {
-                    $display = "<a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."&amp;t=".time()."\">".$display."</a>";
+                    $display = '<a href="'.ml($mediaNS.$this->_getFileID($midFile)).'">'.$display.'</a>';
                 }
+                $display .= '<p>'.$display.'</p>'.NL;
                 break;
 
             // image with list of abc, midi, ps/pdf
             case 2:
-                $display = "<ul>\n";
+                $display = '<ul>';
                 // abc file is always there
-                $display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($abcFile)."&amp;t=".time()."\" class=\"media mediafile mf_abc\">".$this->_getFileID($abcFile)."</a></li>\n";
+                $display .= '<li>'.$this->_showFile($abcFile).'</li>';
                 // midi file
-                $display .= $midFile ? "<li><a href=\"".$abcMediaUrl.$this->_getFileID($midFile)."&amp;t=".time()."\" class=\"media mediafile mf_mid\">".$this->_getFileID($midFile)."</a></li>\n" : "";
+                $display .= '<li>'.$this->_showFile($midFile).'</li>';
                 // display pdf file if there is any, else display ps file
                 if ($this->getConf('ps2pdf') && $pdfFile) {
-                    $display .= "<li><a href=\"".$abcMediaUrl.$this->_getFileID($pdfFile)."&amp;t=".time()."\" class=\"media mediafile mf_pdf\">".$this->_getFileID($pdfFile)."</a></li>\n";
+                    $display .= '<li>'.$this->_showFile($pdfFile).'</li>';
                 } else {
-                    $display .= $psFile ? "<li><a href=\"".$abcMediaUrl.$this->_getFileID($psFile)."&amp;t=".time()."\" class=\"media mediafile mf_ps\">".$this->_getFileID($psFile)."</a></li>\n" : "";
+                    $display .= '<li>'.$this->_showFile($psFile).'</li>';
                 }
-                $display .= "</ul>\n";
-                $display .= $showImg;
+                $display .= '</ul>'.NL;
+                $display .= '<p>'.$showImg.'</p>'.NL;
                 break;
-
         }
-        $display = "<div class=\"abc\">".$display."</div>";
+        $display = '<div class="abc">'.NL.$display.'</div>'.NL;
         return $display;
     }
 

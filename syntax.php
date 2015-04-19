@@ -6,7 +6,6 @@
  *
  * @license     GPL 2 (http://www.gnu.org/licenses/gpl.html)
  * @author      Anika Henke <anika@selfthinker.org>
- * @version     2008-08-17
  */
 
 if(!defined('DOKU_INC')) die();
@@ -14,17 +13,6 @@ if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
 require_once(DOKU_PLUGIN.'syntax.php');
 
 class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
-
-    function getInfo(){
-        return array(
-            'author' => 'Anika Henke',
-            'email'  => 'anika@selfthinker.org',
-            'date'   => '2008-08-17',
-            'name'   => 'ABC Plugin',
-            'desc'   => 'Displays sheet music (input ABC, output png with midi)',
-            'url'    => 'http://dokuwiki.org/plugin:abc',
-        );
-    }
 
     function getType(){
         return 'protected';

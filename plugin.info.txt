@@ -1,0 +1,7 @@
+base    abc
+author  Anika Henke
+email   anika@selfthinker.org
+date    2015-04-19
+name    ABC Plugin
+desc    Displays sheet music (input ABC, output PNG, MIDI and PDF)
+url     https://www.dokuwiki.org/plugin:abc

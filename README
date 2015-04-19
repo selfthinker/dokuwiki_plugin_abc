@@ -1,7 +1,5 @@
 ABC Plugin (http://dokuwiki.org/plugin:abc)
-for ABC notation (http://abcnotation.org.uk/)
+for ABC notation (http://abcnotation.com/)
 in DokuWiki (http://dokuwiki.org/)
 
-version: 2008-08-17
-author:  Anika Henke <anika@selfthinker.org>
-license: GPL 2 (http://www.gnu.org/licenses/gpl.html)
+See more in plugin.info.txt

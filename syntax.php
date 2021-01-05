@@ -188,10 +188,10 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
         $fileDir = $abcdir.'/'.utf8_encodeFN(str_replace(':','/',getNS($ID)));
 
         // the abcID is what comes after the 'X:'
-        preg_match("/\s?X\s?:(.*?)\n/se", $src, $matchesX);
+        preg_match("/\s?X\s?:(.*?)\n/s", $src, $matchesX);
         $abcID = preg_replace('/\s?X\s?:/', '', $matchesX[0]);
         // the abcTitle is what comes after the (first) 'T:'
-        preg_match("/\s?T\s?:(.*?)\n/se", $src, $matchesT);
+        preg_match("/\s?T\s?:(.*?)\n/s", $src, $matchesT);
         $abcTitle = preg_replace('/\s?T\s?:/', '', $matchesT[0]);
         $fileName = cleanID($abcID."_".$abcTitle);
 

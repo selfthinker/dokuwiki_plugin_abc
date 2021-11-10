@@ -403,7 +403,7 @@ class syntax_plugin_abc extends DokuWiki_Syntax_Plugin {
                 if($midFile) {
                     $display = '<a href="'.ml($mediaNS.$this->_getFileID($midFile)).'">'.$display.'</a>';
                 }
-                $display .= '<p>'.$display.'</p>'.NL;
+                $display = '<p>'.$display.'</p>'.NL;
                 break;
 
             // image with list of abc, midi, ps/pdf
